@@ -39,10 +39,16 @@
                     <div class="form-group">
                         <label>類別</label>
                         <select v-model="newItem.tag">
-                            <option value="眼睛">眼睛</option>
+                            <option value="眼珠">眼珠</option>
                             <option value="娃頭">娃頭</option>
-                            <option value="娃身">娃身</option>
+                            <option value="素體">素體</option>
+                            <option value="娃整體">娃整體</option>
+                            <option value="套裝">套裝</option>
+                            <option value="單品">單品</option>
+                            <option value="鞋子">鞋子</option>
+                            <option value="頭髮">頭髮</option>
                             <option value="配件">配件</option>
+                            <option value="其他">其他</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -177,7 +183,7 @@ const newItem = reactive({
     price: '',
     currency: 'NT$ 台幣',
     location: '',
-    tag: '眼睛',
+    tag: '眼珠',
     tagType: 'blue',
     link: '',
     notes: '',
@@ -322,7 +328,7 @@ const resetForm = () => {
         if (key !== 'tag' && key !== 'tagType' && key !== 'currency') {
             newItem[key] = '';
         } else if (key === 'tag') {
-            newItem[key] = '眼睛';
+            newItem[key] = '眼珠';
         } else if (key === 'tagType') {
             newItem[key] = 'blue';
         } else if (key === 'currency') {
@@ -355,9 +361,16 @@ const addNewItem = async () => {
 
         // 根據tag設定tagType
         let tagType = 'blue';
-        if (newItem.tag === '娃頭') tagType = 'tiffany';
-        else if (newItem.tag === '娃身') tagType = 'green';
+        if (newItem.tag === '眼珠') tagType = 'blue';
+        else if (newItem.tag === '娃頭') tagType = 'tiffany';
+        else if (newItem.tag === '素體') tagType = 'green';
+        else if (newItem.tag === '娃整體') tagType = 'purple';
+        else if (newItem.tag === '套裝') tagType = 'red';
+        else if (newItem.tag === '單品') tagType = 'yellow';
+        else if (newItem.tag === '鞋子') tagType = 'brown';
+        else if (newItem.tag === '頭髮') tagType = 'pink';
         else if (newItem.tag === '配件') tagType = 'orange';
+        else if (newItem.tag === '其他') tagType = 'gray';
 
         // 構建要保存的物品對象
         const dollsRef = dbRef(database, 'dolls');
@@ -633,6 +646,26 @@ body {
 
 .tag.tiffany {
     background-color: var(--tiffany-accent);
+}
+
+.tag.purple {
+    background-color: #9c27b0;
+}
+
+.tag.yellow {
+    background-color: #ffc107;
+}
+
+.tag.brown {
+    background-color: #795548;
+}
+
+.tag.pink {
+    background-color: #e91e63;
+}
+
+.tag.gray {
+    background-color: #607d8b;
 }
 
 .doll-info {
