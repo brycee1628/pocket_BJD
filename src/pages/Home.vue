@@ -3,7 +3,7 @@
         <h1 class="title">娃娃收藏清單</h1>
 
         <div class="header-actions">
-            <button class="add-button" @click="showAddForm = true">新增項目</button>
+            <button class="add-button" @click="showPasswordForAddItem">新增項目</button>
             <div class="stats">
                 <span>總數量: {{ totalCount }}</span>
                 <span>總價值: {{ totalValue }}</span>
@@ -74,6 +74,10 @@
                     <div class="form-group">
                         <label>顏色</label>
                         <input type="text" v-model="newItem.color" placeholder="輸入顏色" />
+                    </div>
+                    <div class="form-group">
+                        <label>入手日期</label>
+                        <input type="date" v-model="newItem.purchaseDate" />
                     </div>
                     <div class="form-group">
                         <label>圖片</label>
@@ -158,6 +162,10 @@
                         <input type="text" v-model="editingItem.color" placeholder="輸入顏色" />
                     </div>
                     <div class="form-group">
+                        <label>入手日期</label>
+                        <input type="date" v-model="editingItem.purchaseDate" />
+                    </div>
+                    <div class="form-group">
                         <label>圖片</label>
                         <div class="image-upload">
                             <label for="editImageUpload" class="upload-btn">選擇新圖片</label>
@@ -179,6 +187,18 @@
             </div>
         </div>
 
+        <!-- 密碼驗證彈窗 -->
+        <PasswordModal :visible="showPasswordModal" :title="passwordModalConfig.title"
+            :message="passwordModalConfig.message" @success="onPasswordSuccess" @cancel="onPasswordCancel" />
+
+        <!-- 自定義警告彈窗 -->
+        <AlertModal :visible="alertModal.show" :title="alertModal.title" :message="alertModal.message"
+            @close="closeAlertModal" />
+
+        <!-- 自定義確認彈窗 -->
+        <ConfirmModal :visible="confirmModal.show" :title="confirmModal.title" :message="confirmModal.message"
+            @confirm="confirmAction" @cancel="cancelAction" />
+
         <!-- 加載指示器 -->
         <div class="loading" v-if="isLoading">
             <div class="spinner"></div>
@@ -191,7 +211,7 @@
         </div>
 
         <div class="doll-grid" v-else>
-            <div class="doll-card" v-for="doll in dolls" :key="doll.id">
+            <div class="doll-card" v-for="doll in dolls" :key="doll.id" @click="viewDollDetail(doll.id)">
                 <div class="doll-image">
                     <img :src="doll.imageUrl" alt="娃娃圖片" @error="handleImageError($event, doll)">
                     <span class="tag" :class="doll.tagType">{{ doll.tag }}</span>
@@ -220,15 +240,15 @@
                             <span class="value">{{ doll.color }}</span>
                         </div>
                         <div v-if="doll.link" class="detail-row">
-                            <a :href="doll.link" class="purchase-link">購買連結</a>
+                            <a :href="doll.link" class="purchase-link" @click.stop>購買連結</a>
                         </div>
                         <div v-if="doll.notes" class="detail-row notes">
                             {{ doll.notes }}
                         </div>
                     </div>
                     <div class="card-actions">
-                        <button class="edit-button" @click="editDoll(doll)">編輯</button>
-                        <button class="delete-button" @click="deleteDoll(doll.id)">刪除</button>
+                        <button class="edit-button" @click.stop="editDoll(doll)">編輯</button>
+                        <button class="delete-button" @click.stop="deleteDoll(doll.id)">刪除</button>
                     </div>
                 </div>
             </div>
@@ -238,6 +258,7 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import {
     database,
     storage,
@@ -251,6 +272,12 @@ import {
     getDownloadURL,
     update
 } from '../firebase';
+import { isValidAuth } from '../auth';
+import PasswordModal from '../components/PasswordModal.vue';
+import AlertModal from '../components/AlertModal.vue';
+import ConfirmModal from '../components/ConfirmModal.vue';
+
+const router = useRouter();
 
 const searchQuery = ref('');
 const showAddForm = ref(false);
@@ -274,11 +301,12 @@ const newItem = reactive({
     currency: 'NT$ 台幣',
     location: '',
     tag: '娃頭',
-    tagType: 'blue',
+    tagType: 'tiffany',
     link: '',
     notes: '',
     size: '',
     color: '',
+    purchaseDate: new Date().toISOString().split('T')[0], // 今天的日期作為預設值
     imageFile: null,
     imageUrl: ''
 });
@@ -291,12 +319,13 @@ const editingItem = reactive({
     price: '',
     currency: 'NT$ 台幣',
     location: '',
-    tag: '眼珠',
-    tagType: 'blue',
+    tag: '娃頭',
+    tagType: 'tiffany',
     link: '',
     notes: '',
     size: '',
     color: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
     imageUrl: '',
     newImageFile: null,
     newImageUrl: ''
@@ -304,6 +333,22 @@ const editingItem = reactive({
 
 // 數據存儲
 const dolls = ref([]);
+
+// 警告彈窗狀態
+const alertModal = reactive({
+    show: false,
+    title: '提示',
+    message: '',
+    callback: null
+});
+
+// 確認彈窗狀態
+const confirmModal = reactive({
+    show: false,
+    title: '確認',
+    message: '',
+    action: null
+});
 
 // 從 Firebase 讀取數據
 const fetchDolls = () => {
@@ -331,32 +376,25 @@ const fetchDolls = () => {
 // 上傳圖片到 Firebase Storage
 const uploadImage = async (file) => {
     if (!file) {
-        console.error("未提供文件！");
         throw new Error("未提供文件！");
     }
-
-    console.log("開始上傳圖片，文件大小:", file.size);
 
     try {
         // 創建唯一文件名
         const timestamp = new Date().getTime();
         const fileName = `doll_images/${timestamp}_${file.name}`;
-        console.log("生成的文件名:", fileName);
 
         // 創建存儲引用
         const imgRef = storageRef(storage, fileName);
 
         // 上傳文件
         const snapshot = await uploadBytes(imgRef, file);
-        console.log("文件上傳完成", snapshot);
 
         // 獲取下載URL
         const downloadURL = await getDownloadURL(imgRef);
-        console.log("獲取到下載URL:", downloadURL);
 
         return downloadURL;
     } catch (error) {
-        console.error("圖片上傳過程中發生錯誤:", error);
         throw error;
     }
 };
@@ -396,7 +434,6 @@ const totalValue = computed(() => {
 // 獲取最新匯率
 const fetchExchangeRates = async () => {
     try {
-        console.log("嘗試獲取最新匯率...");
         // 這裡使用免費的匯率API (實際整合時請替換為可靠的服務提供商)
         const response = await fetch('https://open.er-api.com/v6/latest/TWD');
         const data = await response.json();
@@ -408,10 +445,8 @@ const fetchExchangeRates = async () => {
             exchangeRates['$ 美元'] = 1 / data.rates.USD || 31.2;
             exchangeRates['€ 歐元'] = 1 / data.rates.EUR || 34.0;
             exchangeRates['¥ 人民幣'] = 1 / data.rates.CNY || 4.3;
-            console.log("匯率更新成功:", exchangeRates);
         }
     } catch (error) {
-        console.error("獲取匯率失敗，使用預設值:", error);
         // 匯率獲取失敗時使用預設值，已在初始化時設置
     }
 };
@@ -426,7 +461,6 @@ const onImageSelected = (event) => {
         reader.onload = (e) => {
             // 將圖片保存為 Base64 字符串
             newItem.imageUrl = e.target.result;
-            console.log("圖片已轉換為 Base64 格式");
         };
         reader.readAsDataURL(file);
     }
@@ -434,14 +468,16 @@ const onImageSelected = (event) => {
 
 const resetForm = () => {
     Object.keys(newItem).forEach(key => {
-        if (key !== 'tag' && key !== 'tagType' && key !== 'currency') {
+        if (key !== 'tag' && key !== 'tagType' && key !== 'currency' && key !== 'purchaseDate') {
             newItem[key] = '';
         } else if (key === 'tag') {
-            newItem[key] = '眼珠';
+            newItem[key] = '娃頭';
         } else if (key === 'tagType') {
-            newItem[key] = 'blue';
+            newItem[key] = 'tiffany';
         } else if (key === 'currency') {
             newItem[key] = 'NT$ 台幣';
+        } else if (key === 'purchaseDate') {
+            newItem[key] = new Date().toISOString().split('T')[0];
         }
     });
     newItem.imageFile = null;
@@ -449,9 +485,49 @@ const resetForm = () => {
     showAddForm.value = false;
 };
 
+// 顯示警告彈窗
+const showAlert = (message, title = '提示', callback = null) => {
+    alertModal.title = title;
+    alertModal.message = message;
+    alertModal.callback = callback;
+    alertModal.show = true;
+};
+
+// 關閉警告彈窗
+const closeAlertModal = () => {
+    alertModal.show = false;
+    if (alertModal.callback) {
+        alertModal.callback();
+        alertModal.callback = null;
+    }
+};
+
+// 顯示確認彈窗
+const showConfirm = (message, action, title = '確認') => {
+    confirmModal.title = title;
+    confirmModal.message = message;
+    confirmModal.action = action;
+    confirmModal.show = true;
+};
+
+// 確認操作
+const confirmAction = () => {
+    confirmModal.show = false;
+    if (confirmModal.action) {
+        confirmModal.action();
+        confirmModal.action = null;
+    }
+};
+
+// 取消確認操作
+const cancelAction = () => {
+    confirmModal.show = false;
+    confirmModal.action = null;
+};
+
 const addNewItem = async () => {
     if (!newItem.name) {
-        alert('請輸入娃娃名稱！');
+        showAlert('請輸入娃娃名稱！');
         return;
     }
 
@@ -463,9 +539,6 @@ const addNewItem = async () => {
         if (newItem.imageUrl) {
             // 直接使用Base64圖片
             imageUrl = newItem.imageUrl;
-            console.log("使用Base64圖片");
-        } else {
-            console.log("未選擇圖片，使用預設圖片");
         }
 
         // 根據tag設定tagType
@@ -496,96 +569,86 @@ const addNewItem = async () => {
             notes: newItem.notes || '',
             size: newItem.size || '',
             color: newItem.color || '',
+            purchaseDate: newItem.purchaseDate || '',
             imageUrl: imageUrl,
             createdAt: new Date().toISOString()
         };
 
-        console.log("準備保存的數據:", item);
-
         // 保存到數據庫
         await set(newItemRef, item);
-        console.log("數據保存成功，ID:", newItemRef.key);
 
         // 重置表單
         resetForm();
-        alert('娃娃資料添加成功！');
+        showAlert('娃娃資料添加成功！');
 
         // 刷新數據列表
         fetchDolls();
     } catch (error) {
-        console.error("保存數據時發生錯誤:", error);
-        if (error.code) console.error("錯誤代碼:", error.code);
-        if (error.message) console.error("錯誤信息:", error.message);
-        alert(`保存失敗: ${error.message || '未知錯誤'}`);
+        showAlert(`保存失敗: ${error.message || '未知錯誤'}`, '錯誤');
     } finally {
         isLoading.value = false;
     }
 };
 
-// 刪除娃娃項目
-const deleteDoll = async (id) => {
-    if (confirm('確定要刪除這個項目嗎？')) {
+// 實際開始刪除操作
+const startDeleteDoll = async (id) => {
+    const performDelete = async () => {
         try {
             const dollRef = dbRef(database, `dolls/${id}`);
             await remove(dollRef);
-            console.log("項目已刪除");
         } catch (error) {
-            console.error("刪除錯誤:", error);
+            showAlert(`刪除失敗: ${error.message || '未知錯誤'}`, '錯誤');
         }
+    };
+
+    showConfirm('確定要刪除這個項目嗎？', performDelete, '刪除確認');
+};
+
+// 密碼驗證成功後的回調
+const onPasswordSuccess = () => {
+    showPasswordModal.value = false;
+
+    // 根據不同的操作類型執行相應的操作
+    switch (passwordModalConfig.actionType) {
+        case 'add':
+            showAddForm.value = true;
+            break;
+        case 'edit':
+            if (currentEditDoll.value) {
+                startEditDoll(currentEditDoll.value);
+                currentEditDoll.value = null;
+            }
+            break;
+        case 'delete':
+            if (currentDeleteId.value) {
+                startDeleteDoll(currentDeleteId.value);
+                currentDeleteId.value = null;
+            }
+            break;
     }
 };
 
-// 測試數據庫連接
-const testDatabaseConnection = async () => {
-    try {
-        console.log("===== 開始測試數據庫連接 =====");
-        console.log("Database 對象:", database);
-
-        // 嘗試先讀取一下測試數據
-        const testRef = dbRef(database, 'test');
-        console.log("測試數據庫引用創建成功");
-
-        // 嘗試寫入數據
-        await set(testRef, {
-            timestamp: Date.now(),
-            message: "測試連接成功",
-            appInfo: "BJD Doll Collection App"
-        });
-
-        console.log("測試數據寫入成功!");
-        return true;
-    } catch (error) {
-        console.error("Firebase Realtime Database 連接測試失敗:", error);
-        alert("數據庫連接失敗: " + error.message + "。請檢查控制台獲取更多信息。");
-        return false;
-    }
+// 取消密碼驗證
+const onPasswordCancel = () => {
+    showPasswordModal.value = false;
+    currentEditDoll.value = null;
+    currentDeleteId.value = null;
 };
+
+// 初始化臨時存儲變數
+const currentEditDoll = ref(null);
+const currentDeleteId = ref(null);
 
 // 頁面載入時獲取數據
 onMounted(() => {
-    console.log("頁面已載入，開始測試數據庫和獲取數據");
-
     // 獲取最新匯率
     fetchExchangeRates();
 
-    // 測試數據庫連接
-    testDatabaseConnection().then((success) => {
-        // 只有在測試成功後才獲取數據
-        if (success) {
-            console.log("開始獲取娃娃數據...");
-            fetchDolls();
-        } else {
-            isLoading.value = false; // 停止加載指示器
-        }
-    }).catch(error => {
-        console.error("無法開始獲取數據:", error);
-        isLoading.value = false; // 停止加載指示器
-    });
+    // 直接獲取數據
+    fetchDolls();
 });
 
 const handleImageError = (event, doll) => {
-    console.error("圖片加載失敗:", event);
-    console.error("娃娃資料:", doll);
     doll.imageUrl = "https://via.placeholder.com/200x200";
 };
 
@@ -629,25 +692,18 @@ const formatCurrency = (doll) => {
 
 // 打開編輯表單
 const editDoll = (doll) => {
-    currentEditId.value = doll.id;
+    // 檢查是否已經通過驗證
+    if (isValidAuth()) {
+        startEditDoll(doll);
+        return;
+    }
 
-    // 複製數據到編輯對象
-    editingItem.name = doll.name || '';
-    editingItem.brand = doll.brand || '';
-    editingItem.price = doll.price || '';
-    editingItem.currency = doll.currency || 'NT$ 台幣';
-    editingItem.location = doll.location || '';
-    editingItem.tag = doll.tag || '眼珠';
-    editingItem.tagType = doll.tagType || 'blue';
-    editingItem.link = doll.link || '';
-    editingItem.notes = doll.notes || '';
-    editingItem.size = doll.size || '';
-    editingItem.color = doll.color || '';
-    editingItem.imageUrl = doll.imageUrl || '';
-    editingItem.newImageFile = null;
-    editingItem.newImageUrl = '';
-
-    showEditForm.value = true;
+    passwordModalConfig.title = '編輯項目驗證';
+    passwordModalConfig.message = '請輸入管理密碼以編輯項目';
+    passwordModalConfig.actionType = 'edit';
+    // 暫存當前編輯的項目
+    currentEditDoll.value = doll;
+    showPasswordModal.value = true;
 };
 
 // 為編輯表單選擇圖片
@@ -661,7 +717,6 @@ const onEditImageSelected = (event) => {
         reader.onload = (e) => {
             // 將圖片保存為 Base64 字符串
             editingItem.newImageUrl = e.target.result;
-            console.log("編輯圖片已轉換為 Base64 格式");
         };
         reader.readAsDataURL(file);
     }
@@ -670,7 +725,7 @@ const onEditImageSelected = (event) => {
 // 更新項目
 const updateItem = async () => {
     if (!editingItem.name) {
-        alert('請輸入娃娃名稱！');
+        showAlert('請輸入娃娃名稱！');
         return;
     }
 
@@ -680,7 +735,6 @@ const updateItem = async () => {
         let imageUrl = editingItem.imageUrl;
         if (editingItem.newImageUrl) {
             imageUrl = editingItem.newImageUrl;
-            console.log("使用新的Base64圖片");
         }
 
         // 根據tag設定tagType
@@ -710,31 +764,95 @@ const updateItem = async () => {
             notes: editingItem.notes || '',
             size: editingItem.size || '',
             color: editingItem.color || '',
+            purchaseDate: editingItem.purchaseDate || '',
             imageUrl: imageUrl,
             updatedAt: new Date().toISOString()
         };
 
-        console.log("準備更新的數據:", updatedItem);
-
         // 更新數據庫
         await update(dollRef, updatedItem);
-        console.log("數據更新成功");
 
         // 關閉表單
         showEditForm.value = false;
         currentEditId.value = null;
-        alert('娃娃資料更新成功！');
+        showAlert('娃娃資料更新成功！');
 
         // 刷新數據列表
         fetchDolls();
     } catch (error) {
-        console.error("更新數據時發生錯誤:", error);
-        if (error.code) console.error("錯誤代碼:", error.code);
-        if (error.message) console.error("錯誤信息:", error.message);
-        alert(`更新失敗: ${error.message || '未知錯誤'}`);
+        showAlert(`更新失敗: ${error.message || '未知錯誤'}`, '錯誤');
     } finally {
         isLoading.value = false;
     }
+};
+
+// 實際開始編輯操作
+const startEditDoll = (doll) => {
+    currentEditId.value = doll.id;
+
+    // 複製數據到編輯對象
+    editingItem.name = doll.name || '';
+    editingItem.brand = doll.brand || '';
+    editingItem.price = doll.price || '';
+    editingItem.currency = doll.currency || 'NT$ 台幣';
+    editingItem.location = doll.location || '';
+    editingItem.tag = doll.tag || '眼珠';
+    editingItem.tagType = doll.tagType || 'blue';
+    editingItem.link = doll.link || '';
+    editingItem.notes = doll.notes || '';
+    editingItem.size = doll.size || '';
+    editingItem.color = doll.color || '';
+    editingItem.purchaseDate = doll.purchaseDate || new Date().toISOString().split('T')[0];
+    editingItem.imageUrl = doll.imageUrl || '';
+    editingItem.newImageFile = null;
+    editingItem.newImageUrl = '';
+
+    showEditForm.value = true;
+};
+
+// 添加查看詳情函數
+const viewDollDetail = (id) => {
+    router.push({
+        name: 'Detail',
+        params: { id: id }
+    });
+};
+
+const showPasswordModal = ref(false);
+const passwordModalConfig = reactive({
+    title: '驗證密碼',
+    message: '請輸入管理密碼以繼續操作',
+    actionType: '' // 'add', 'edit', 'delete'
+});
+
+// 顯示密碼驗證（新增）
+const showPasswordForAddItem = () => {
+    // 檢查是否已經通過驗證
+    if (isValidAuth()) {
+        showAddForm.value = true;
+        return;
+    }
+
+    passwordModalConfig.title = '新增項目驗證';
+    passwordModalConfig.message = '請輸入管理密碼以新增項目';
+    passwordModalConfig.actionType = 'add';
+    showPasswordModal.value = true;
+};
+
+// 刪除娃娃項目
+const deleteDoll = (id) => {
+    // 檢查是否已經通過驗證
+    if (isValidAuth()) {
+        startDeleteDoll(id);
+        return;
+    }
+
+    passwordModalConfig.title = '刪除項目驗證';
+    passwordModalConfig.message = '請輸入管理密碼以刪除項目';
+    passwordModalConfig.actionType = 'delete';
+    // 暫存要刪除的ID
+    currentDeleteId.value = id;
+    showPasswordModal.value = true;
 };
 </script>
 
@@ -817,6 +935,7 @@ body {
     min-width: 240px;
     min-height: 350px;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
 }
 
 .doll-card:hover {
