@@ -39,10 +39,10 @@
                     <div class="form-group">
                         <label>類別</label>
                         <select v-model="newItem.tag">
-                            <option value="眼珠">眼珠</option>
                             <option value="娃頭">娃頭</option>
                             <option value="素體">素體</option>
                             <option value="娃整體">娃整體</option>
+                            <option value="眼珠">眼珠</option>
                             <option value="套裝">套裝</option>
                             <option value="單品">單品</option>
                             <option value="鞋子">鞋子</option>
@@ -56,8 +56,8 @@
                         <input type="text" v-model="newItem.brand" placeholder="輸入製作者" />
                     </div>
                     <div class="form-group">
-                        <label>位置</label>
-                        <input type="text" v-model="newItem.location" placeholder="輸入位置" />
+                        <label>產地</label>
+                        <input type="text" v-model="newItem.location" placeholder="輸入產地" />
                     </div>
                     <div class="form-group">
                         <label>購買連結</label>
@@ -92,6 +92,93 @@
             </div>
         </div>
 
+        <!-- 編輯項目表單 -->
+        <div class="modal" v-if="showEditForm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>編輯項目</h2>
+                    <button class="close-button" @click="showEditForm = false">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>品項名稱</label>
+                        <input type="text" v-model="editingItem.name" placeholder="輸入品項名稱" />
+                    </div>
+                    <div class="form-group">
+                        <label>價格</label>
+                        <div class="price-input">
+                            <input type="text" v-model="editingItem.price" placeholder="輸入價格" />
+                            <select v-model="editingItem.currency">
+                                <option value="NT$ 台幣">NT$ 台幣</option>
+                                <option value="HK$ 港幣">HK$ 港幣</option>
+                                <option value="¥ 日元">¥ 日元</option>
+                                <option value="$ 美元">$ 美元</option>
+                                <option value="€ 歐元">€ 歐元</option>
+                                <option value="¥ 人民幣">¥ 人民幣</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>類別</label>
+                        <select v-model="editingItem.tag">
+                            <option value="娃頭">娃頭</option>
+                            <option value="素體">素體</option>
+                            <option value="娃整體">娃整體</option>
+                            <option value="眼珠">眼珠</option>
+                            <option value="套裝">套裝</option>
+                            <option value="單品">單品</option>
+                            <option value="鞋子">鞋子</option>
+                            <option value="頭髮">頭髮</option>
+                            <option value="配件">配件</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>製作者</label>
+                        <input type="text" v-model="editingItem.brand" placeholder="輸入製作者" />
+                    </div>
+                    <div class="form-group">
+                        <label>產地</label>
+                        <input type="text" v-model="editingItem.location" placeholder="輸入產地" />
+                    </div>
+                    <div class="form-group">
+                        <label>購買連結</label>
+                        <input type="text" v-model="editingItem.link" placeholder="輸入購買連結" />
+                    </div>
+                    <div class="form-group">
+                        <label>備註</label>
+                        <textarea v-model="editingItem.notes" placeholder="輸入備註"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>尺寸</label>
+                        <input type="text" v-model="editingItem.size" placeholder="輸入尺寸，例如: 18mm, 60cm" />
+                    </div>
+                    <div class="form-group">
+                        <label>顏色</label>
+                        <input type="text" v-model="editingItem.color" placeholder="輸入顏色" />
+                    </div>
+                    <div class="form-group">
+                        <label>圖片</label>
+                        <div class="image-upload">
+                            <label for="editImageUpload" class="upload-btn">選擇新圖片</label>
+                            <input type="file" id="editImageUpload" @change="onEditImageSelected" accept="image/*"
+                                style="display:none" />
+                            <span v-if="editingItem.newImageFile">已選擇: {{ editingItem.newImageFile.name }}</span>
+                        </div>
+                        <div class="current-image" v-if="editingItem.imageUrl">
+                            <img :src="editingItem.imageUrl" alt="當前圖片"
+                                style="max-width: 100px; max-height: 100px; margin-top: 10px;">
+                            <p>當前圖片</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="cancel-button" @click="showEditForm = false">取消</button>
+                    <button class="submit-button" @click="updateItem">更新</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 加載指示器 -->
         <div class="loading" v-if="isLoading">
             <div class="spinner"></div>
@@ -121,7 +208,7 @@
                             <span class="value">{{ formatCurrency(doll) }}</span>
                         </div>
                         <div class="detail-row">
-                            <span class="label">位置:</span>
+                            <span class="label">產地:</span>
                             <span class="value">{{ doll.location }}</span>
                         </div>
                         <div v-if="doll.size" class="detail-row">
@@ -140,7 +227,7 @@
                         </div>
                     </div>
                     <div class="card-actions">
-                        <button class="edit-button">編輯</button>
+                        <button class="edit-button" @click="editDoll(doll)">編輯</button>
                         <button class="delete-button" @click="deleteDoll(doll.id)">刪除</button>
                     </div>
                 </div>
@@ -161,12 +248,15 @@ import {
     set,
     remove,
     uploadBytes,
-    getDownloadURL
+    getDownloadURL,
+    update
 } from '../firebase';
 
 const searchQuery = ref('');
 const showAddForm = ref(false);
+const showEditForm = ref(false);
 const isLoading = ref(true);
+const currentEditId = ref(null);
 
 // 添加匯率狀態
 const exchangeRates = reactive({
@@ -183,7 +273,7 @@ const newItem = reactive({
     price: '',
     currency: 'NT$ 台幣',
     location: '',
-    tag: '眼珠',
+    tag: '娃頭',
     tagType: 'blue',
     link: '',
     notes: '',
@@ -191,6 +281,25 @@ const newItem = reactive({
     color: '',
     imageFile: null,
     imageUrl: ''
+});
+
+// 編輯項目數據
+const editingItem = reactive({
+    id: '',
+    name: '',
+    brand: '',
+    price: '',
+    currency: 'NT$ 台幣',
+    location: '',
+    tag: '眼珠',
+    tagType: 'blue',
+    link: '',
+    notes: '',
+    size: '',
+    color: '',
+    imageUrl: '',
+    newImageFile: null,
+    newImageUrl: ''
 });
 
 // 數據存儲
@@ -516,6 +625,116 @@ const formatCurrency = (doll) => {
     }
 
     return currencyStr + ' ' + doll.price;
+};
+
+// 打開編輯表單
+const editDoll = (doll) => {
+    currentEditId.value = doll.id;
+
+    // 複製數據到編輯對象
+    editingItem.name = doll.name || '';
+    editingItem.brand = doll.brand || '';
+    editingItem.price = doll.price || '';
+    editingItem.currency = doll.currency || 'NT$ 台幣';
+    editingItem.location = doll.location || '';
+    editingItem.tag = doll.tag || '眼珠';
+    editingItem.tagType = doll.tagType || 'blue';
+    editingItem.link = doll.link || '';
+    editingItem.notes = doll.notes || '';
+    editingItem.size = doll.size || '';
+    editingItem.color = doll.color || '';
+    editingItem.imageUrl = doll.imageUrl || '';
+    editingItem.newImageFile = null;
+    editingItem.newImageUrl = '';
+
+    showEditForm.value = true;
+};
+
+// 為編輯表單選擇圖片
+const onEditImageSelected = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        editingItem.newImageFile = file;
+
+        // 創建一個 FileReader 來將圖片轉換為 Base64 編碼
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            // 將圖片保存為 Base64 字符串
+            editingItem.newImageUrl = e.target.result;
+            console.log("編輯圖片已轉換為 Base64 格式");
+        };
+        reader.readAsDataURL(file);
+    }
+};
+
+// 更新項目
+const updateItem = async () => {
+    if (!editingItem.name) {
+        alert('請輸入娃娃名稱！');
+        return;
+    }
+
+    isLoading.value = true;
+    try {
+        // 如果有新圖片，使用新的Base64圖片
+        let imageUrl = editingItem.imageUrl;
+        if (editingItem.newImageUrl) {
+            imageUrl = editingItem.newImageUrl;
+            console.log("使用新的Base64圖片");
+        }
+
+        // 根據tag設定tagType
+        let tagType = 'blue';
+        if (editingItem.tag === '眼珠') tagType = 'blue';
+        else if (editingItem.tag === '娃頭') tagType = 'tiffany';
+        else if (editingItem.tag === '素體') tagType = 'green';
+        else if (editingItem.tag === '娃整體') tagType = 'purple';
+        else if (editingItem.tag === '套裝') tagType = 'red';
+        else if (editingItem.tag === '單品') tagType = 'yellow';
+        else if (editingItem.tag === '鞋子') tagType = 'brown';
+        else if (editingItem.tag === '頭髮') tagType = 'pink';
+        else if (editingItem.tag === '配件') tagType = 'orange';
+        else if (editingItem.tag === '其他') tagType = 'gray';
+
+        // 構建要更新的物品對象
+        const dollRef = dbRef(database, `dolls/${currentEditId.value}`);
+        const updatedItem = {
+            name: editingItem.name,
+            brand: editingItem.brand || '',
+            price: editingItem.price || 0,
+            currency: editingItem.currency || 'NT$ 台幣',
+            location: editingItem.location || '',
+            tag: editingItem.tag || '',
+            tagType: tagType,
+            link: editingItem.link || '',
+            notes: editingItem.notes || '',
+            size: editingItem.size || '',
+            color: editingItem.color || '',
+            imageUrl: imageUrl,
+            updatedAt: new Date().toISOString()
+        };
+
+        console.log("準備更新的數據:", updatedItem);
+
+        // 更新數據庫
+        await update(dollRef, updatedItem);
+        console.log("數據更新成功");
+
+        // 關閉表單
+        showEditForm.value = false;
+        currentEditId.value = null;
+        alert('娃娃資料更新成功！');
+
+        // 刷新數據列表
+        fetchDolls();
+    } catch (error) {
+        console.error("更新數據時發生錯誤:", error);
+        if (error.code) console.error("錯誤代碼:", error.code);
+        if (error.message) console.error("錯誤信息:", error.message);
+        alert(`更新失敗: ${error.message || '未知錯誤'}`);
+    } finally {
+        isLoading.value = false;
+    }
 };
 </script>
 
@@ -875,7 +1094,7 @@ body {
 }
 
 .price-input select {
-    width: 80px;
+    width: 100px;
 }
 
 /* 加載狀態 */
