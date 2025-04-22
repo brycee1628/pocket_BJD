@@ -1,0 +1,34 @@
+[
+    {
+        "origin": [
+            "*"
+        ],
+        "method": [
+            "GET",
+            "HEAD",
+            "PUT",
+            "POST",
+            "DELETE",
+            "OPTIONS"
+        ],
+        "responseHeader": [
+            "Content-Type",
+            "Content-Length",
+            "Content-Encoding",
+            "Content-Disposition",
+            "Cache-Control",
+            "Accept-Ranges",
+            "Content-Range",
+            "Content-Language",
+            "Content-Location",
+            "Date",
+            "ETag",
+            "Last-Modified",
+            "Vary",
+            "X-HTTP-Method-Override",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Expose-Headers"
+        ],
+        "maxAgeSeconds": 3600
+    }
+]

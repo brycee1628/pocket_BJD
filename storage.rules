@@ -1,0 +1,12 @@
+// 訪問控制規則，允許讀取和寫入操作
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // 允許讀取操作給所有人
+      allow read;
+      // 允許寫入操作給所有人（在實際產品環境中應設置更嚴格的規則）
+      allow write;
+    }
+  }
+} 
