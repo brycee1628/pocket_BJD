@@ -10,6 +10,38 @@
             </div>
         </div>
 
+        <!-- 搜索框 -->
+        <div class="search-container">
+            <input type="text" v-model="searchQuery" placeholder="搜尋" class="search-input" @input="handleSearch" />
+            <div class="filter-options">
+                <select v-model="filterTag" @change="handleSearch">
+                    <option value="">所有類別</option>
+                    <option value="娃頭">娃頭</option>
+                    <option value="素體">素體</option>
+                    <option value="娃整體">娃整體</option>
+                    <option value="眼珠">眼珠</option>
+                    <option value="套裝">套裝</option>
+                    <option value="單品">單品</option>
+                    <option value="鞋子">鞋子</option>
+                    <option value="頭髮">頭髮</option>
+                    <option value="配件">配件</option>
+                    <option value="其他">其他</option>
+                </select>
+                <select v-model="sortOrder" @change="handleSearch">
+                    <option value="newest">最新添加</option>
+                    <option value="oldest">最早添加</option>
+                    <option value="priceHigh">價格由高到低</option>
+                    <option value="priceLow">價格由低到高</option>
+                    <option value="nameAZ">名稱 A-Z</option>
+                    <option value="nameZA">名稱 Z-A</option>
+                </select>
+            </div>
+            <div class="search-results-info" v-if="searchQuery || filterTag">
+                找到 <span class="result-count">{{ filteredDolls.length }}</span> 個結果
+                <button class="clear-search" @click="clearSearch">清除搜索</button>
+            </div>
+        </div>
+
         <!-- 新增項目表單 -->
         <div class="modal" v-if="showAddForm">
             <div class="modal-content">
@@ -210,18 +242,23 @@
             <p>目前沒有娃娃數據。點擊「新增項目」添加您的第一個娃娃吧！</p>
         </div>
 
+        <!-- 沒有搜索結果提示 -->
+        <div class="empty-state" v-else-if="filteredDolls.length === 0">
+            <p>沒有找到匹配的娃娃。請嘗試更改搜索條件。</p>
+        </div>
+
         <div class="doll-grid" v-else>
-            <div class="doll-card" v-for="doll in dolls" :key="doll.id" @click="viewDollDetail(doll.id)">
+            <div class="doll-card" v-for="doll in filteredDolls" :key="doll.id" @click="viewDollDetail(doll.id)">
                 <div class="doll-image">
                     <img :src="doll.imageUrl" alt="娃娃圖片" @error="handleImageError($event, doll)">
                     <span class="tag" :class="doll.tagType">{{ doll.tag }}</span>
                 </div>
                 <div class="doll-info">
-                    <h3 class="doll-name">{{ doll.name }}</h3>
+                    <h3 class="doll-name" v-html="highlightText(doll.name)"></h3>
                     <div class="doll-details">
                         <div class="detail-row">
                             <span class="label">製作者:</span>
-                            <span class="value">{{ doll.brand }}</span>
+                            <span class="value" v-html="highlightText(doll.brand)"></span>
                         </div>
                         <div class="detail-row">
                             <span class="label">價格:</span>
@@ -229,21 +266,20 @@
                         </div>
                         <div class="detail-row">
                             <span class="label">產地:</span>
-                            <span class="value">{{ doll.location }}</span>
+                            <span class="value" v-html="highlightText(doll.location)"></span>
                         </div>
                         <div v-if="doll.size" class="detail-row">
                             <span class="label">尺寸:</span>
-                            <span class="value">{{ doll.size }}</span>
+                            <span class="value" v-html="highlightText(doll.size)"></span>
                         </div>
                         <div v-if="doll.color" class="detail-row">
                             <span class="label">顏色:</span>
-                            <span class="value">{{ doll.color }}</span>
+                            <span class="value" v-html="highlightText(doll.color)"></span>
                         </div>
                         <div v-if="doll.link" class="detail-row">
                             <a :href="doll.link" class="purchase-link" @click.stop>購買連結</a>
                         </div>
-                        <div v-if="doll.notes" class="detail-row notes">
-                            {{ doll.notes }}
+                        <div v-if="doll.notes" class="detail-row notes" v-html="highlightText(doll.notes)">
                         </div>
                     </div>
                     <div class="card-actions">
@@ -257,7 +293,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue';
+import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
     database,
@@ -280,10 +316,14 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 const router = useRouter();
 
 const searchQuery = ref('');
+const filterTag = ref('');
+const sortOrder = ref('newest');
 const showAddForm = ref(false);
 const showEditForm = ref(false);
 const isLoading = ref(true);
 const currentEditId = ref(null);
+const currentDeleteId = ref(null);
+const currentEditDoll = ref(null);
 
 // 添加匯率狀態
 const exchangeRates = reactive({
@@ -333,6 +373,59 @@ const editingItem = reactive({
 
 // 數據存儲
 const dolls = ref([]);
+const filteredDolls = computed(() => {
+    let result = [...dolls.value];
+
+    // 應用搜索查詢過濾
+    if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase();
+        result = result.filter(doll =>
+            (doll.name && doll.name.toLowerCase().includes(query)) ||
+            (doll.brand && doll.brand.toLowerCase().includes(query)) ||
+            (doll.tag && doll.tag.toLowerCase().includes(query)) ||
+            (doll.notes && doll.notes.toLowerCase().includes(query)) ||
+            (doll.color && doll.color.toLowerCase().includes(query)) ||
+            (doll.location && doll.location.toLowerCase().includes(query))
+        );
+    }
+
+    // 按類別過濾
+    if (filterTag.value) {
+        result = result.filter(doll => doll.tag === filterTag.value);
+    }
+
+    // 排序
+    switch (sortOrder.value) {
+        case 'newest':
+            result.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            break;
+        case 'oldest':
+            result.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+            break;
+        case 'priceHigh':
+            result.sort((a, b) => {
+                const priceA = convertToNTD(a);
+                const priceB = convertToNTD(b);
+                return priceB - priceA;
+            });
+            break;
+        case 'priceLow':
+            result.sort((a, b) => {
+                const priceA = convertToNTD(a);
+                const priceB = convertToNTD(b);
+                return priceA - priceB;
+            });
+            break;
+        case 'nameAZ':
+            result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            break;
+        case 'nameZA':
+            result.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+            break;
+    }
+
+    return result;
+});
 
 // 警告彈窗狀態
 const alertModal = reactive({
@@ -399,32 +492,18 @@ const uploadImage = async (file) => {
     }
 };
 
+// 計算總數量和價值要基於過濾後的數據
 const totalCount = computed(() => {
-    return dolls.value.length;
+    return filteredDolls.value.length;
 });
 
 // 計算總價值
 const totalValue = computed(() => {
     let total = 0;
 
-    dolls.value.forEach(doll => {
+    filteredDolls.value.forEach(doll => {
         if (doll.price && !isNaN(parseFloat(doll.price))) {
-            let price = parseFloat(doll.price);
-
-            // 使用保存的匯率進行轉換
-            if (doll.currency === 'HK$ 港幣') price *= exchangeRates['HK$ 港幣'];
-            else if (doll.currency === '¥ 日元') price *= exchangeRates['¥ 日元'];
-            else if (doll.currency === '$ 美元') price *= exchangeRates['$ 美元'];
-            else if (doll.currency === '€ 歐元') price *= exchangeRates['€ 歐元'];
-            else if (doll.currency === '¥ 人民幣') price *= exchangeRates['¥ 人民幣'];
-            // 處理舊數據
-            else if (doll.currency === 'HK$') price *= exchangeRates['HK$ 港幣'];
-            else if (doll.currency === '¥') price *= exchangeRates['¥ 日元'];
-            else if (doll.currency === '$') price *= exchangeRates['$ 美元'];
-            else if (doll.currency === '€') price *= exchangeRates['€ 歐元'];
-            else if (doll.currency === '¥ CNY') price *= exchangeRates['¥ 人民幣'];
-
-            total += price;
+            total += convertToNTD(doll);
         }
     });
 
@@ -635,17 +714,10 @@ const onPasswordCancel = () => {
     currentDeleteId.value = null;
 };
 
-// 初始化臨時存儲變數
-const currentEditDoll = ref(null);
-const currentDeleteId = ref(null);
-
 // 頁面載入時獲取數據
 onMounted(() => {
-    // 獲取最新匯率
-    fetchExchangeRates();
-
-    // 直接獲取數據
     fetchDolls();
+    fetchExchangeRates();
 });
 
 const handleImageError = (event, doll) => {
@@ -853,6 +925,51 @@ const deleteDoll = (id) => {
     // 暫存要刪除的ID
     currentDeleteId.value = id;
     showPasswordModal.value = true;
+};
+
+// 將不同幣值轉換為台幣的輔助函數
+const convertToNTD = (doll) => {
+    if (!doll.price || isNaN(parseFloat(doll.price))) return 0;
+
+    let price = parseFloat(doll.price);
+
+    // 使用保存的匯率進行轉換
+    if (doll.currency === 'HK$ 港幣' || doll.currency === 'HK$')
+        price *= exchangeRates['HK$ 港幣'];
+    else if (doll.currency === '¥ 日元' || doll.currency === '¥')
+        price *= exchangeRates['¥ 日元'];
+    else if (doll.currency === '$ 美元' || doll.currency === '$')
+        price *= exchangeRates['$ 美元'];
+    else if (doll.currency === '€ 歐元' || doll.currency === '€')
+        price *= exchangeRates['€ 歐元'];
+    else if (doll.currency === '¥ 人民幣' || doll.currency === '¥ CNY')
+        price *= exchangeRates['¥ 人民幣'];
+
+    return price;
+};
+
+// 處理搜索和過濾
+const handleSearch = () => {
+    // 已通過computed屬性自動處理
+};
+
+// 清除搜索條件
+const clearSearch = () => {
+    searchQuery.value = '';
+    filterTag.value = '';
+    sortOrder.value = 'newest';
+};
+
+// 添加即時搜索關鍵詞高亮顯示功能
+const highlightText = (text) => {
+    if (!searchQuery.value || !text) return text || '';
+
+    const query = searchQuery.value.toLowerCase();
+    const highlightedText = String(text).replace(new RegExp(query, 'gi'), (match) => {
+        return `<span class="highlight">${match}</span>`;
+    });
+
+    return highlightedText;
 };
 </script>
 
@@ -1273,6 +1390,78 @@ body {
 @media (max-width: 480px) {
     .doll-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+.search-container {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+    box-shadow: 0 1px 3px rgba(10, 186, 181, 0.1);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--tiffany-blue);
+    box-shadow: 0 1px 3px rgba(10, 186, 181, 0.3);
+}
+
+.filter-options {
+    display: flex;
+    gap: 10px;
+}
+
+.filter-options select {
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    flex: 1;
+}
+
+.filter-options select:focus {
+    outline: none;
+    border-color: var(--tiffany-blue);
+}
+
+.search-results-info {
+    text-align: right;
+    font-size: 14px;
+    color: #666;
+}
+
+.result-count {
+    font-weight: 500;
+}
+
+.clear-search {
+    background: none;
+    border: none;
+    color: var(--tiffany-blue);
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 5px;
+}
+
+.highlight {
+    background-color: rgba(10, 186, 181, 0.3);
+    padding: 0 2px;
+    border-radius: 2px;
+    font-weight: bold;
+}
+
+@media (max-width: 768px) {
+    .filter-options {
+        flex-direction: column;
     }
 }
 </style>
